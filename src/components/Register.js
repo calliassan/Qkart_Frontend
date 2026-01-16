@@ -1,16 +1,40 @@
-import { Button, CircularProgress, Stack, TextField } from "@mui/material";
+import {
+  Button,
+  CircularProgress,
+  circularProgressClasses,
+  Stack,
+  TextField,
+} from "@mui/material";
 import { Box } from "@mui/system";
 import axios from "axios";
 import { useSnackbar } from "notistack";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { config } from "../App";
 import Footer from "./Footer";
 import Header from "./Header";
 import "./Register.css";
+import { useHistory } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 const Register = () => {
   const { enqueueSnackbar } = useSnackbar();
+  const [formData, setformData] = useState({
+    username: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [loading, setloading] = useState(false);
+  const history = useHistory();
 
+  const handlechange = (e) => {
+    console.log(e.target.name);
+    setformData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleregister = (e) => {
+    e.preventDefault();
+    register(formData);
+  };
 
   // TODO: CRIO_TASK_MODULE_REGISTER - Implement the register function
   /**
@@ -36,6 +60,30 @@ const Register = () => {
    * }
    */
   const register = async (formData) => {
+    if (!validateInput(formData)) {
+      return;
+    }
+    const url = `${config.endpoint}/api/v1/auth/register`;
+    setloading(true);
+    try {
+      const response = await axios.post(url, {
+        username: formData.username,
+        password: formData.password,
+      });
+      if (response.status === 201) {
+        enqueueSnackbar("Registered successfully", { variant: "success" });
+      }
+      history.push("/login");
+    } catch (error) {
+      if (error.response && error.response.status === 400) {
+        enqueueSnackbar(error.response.data.message, { variant: "error" });
+      } else {
+        enqueueSnackbar(
+          "Something went wrong. Check that the backend is running, reachable and returns valid JSON"
+        );
+      }
+    }
+    setloading(false);
   };
 
   // TODO: CRIO_TASK_MODULE_REGISTER - Implement user input validation logic
@@ -57,6 +105,18 @@ const Register = () => {
    * -    Check that confirmPassword field has the same value as password field - Passwords do not match
    */
   const validateInput = (data) => {
+    const { username, password, confirmPassword } = data;
+    if (!username) {
+      enqueueSnackbar("username is required", { variant: "warning" });
+      return false;
+    }
+    if (!password) {
+      enqueueSnackbar("enter pass");
+    }
+    if (!confirmPassword) {
+      enqueueSnackbar("enter cpnfirmpasswod");
+    }
+    return true;
   };
 
   return (
@@ -77,6 +137,8 @@ const Register = () => {
             title="Username"
             name="username"
             placeholder="Enter Username"
+            value={formData.username}
+            onChange={handlechange}
             fullWidth
           />
           <TextField
@@ -88,6 +150,8 @@ const Register = () => {
             helperText="Password must be atleast 6 characters length"
             fullWidth
             placeholder="Enter a password with minimum 6 characters"
+            value={formData.password}
+            onChange={handlechange}
           />
           <TextField
             id="confirmPassword"
@@ -95,16 +159,22 @@ const Register = () => {
             label="Confirm Password"
             name="confirmPassword"
             type="password"
+            value={formData.confirmPassword}
+            onChange={handlechange}
             fullWidth
           />
-           <Button className="button" variant="contained">
-            Register Now
-           </Button>
+          <Button
+            className="button"
+            variant="contained"
+            onClick={handleregister}
+          >
+            {loading ? <CircularProgress /> : "Register Now"}
+          </Button>
           <p className="secondary-action">
-            Already have an account?{" "}
-             <a className="link" href="#">
+            Already have an account?
+            <Link className="link" to="/login">
               Login here
-             </a>
+            </Link>
           </p>
         </Stack>
       </Box>
