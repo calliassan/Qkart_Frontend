@@ -8,7 +8,7 @@ import {
 import { Box } from "@mui/system";
 import axios from "axios";
 import { useSnackbar } from "notistack";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { config } from "../App";
 import Footer from "./Footer";
 import Header from "./Header";
