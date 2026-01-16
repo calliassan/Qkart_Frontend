@@ -8,7 +8,6 @@ import { config } from "../App";
 import Footer from "./Footer";
 import Header from "./Header";
 import "./Login.css";
-import Register from "./Register.js";
 
 const Login = () => {
   const { enqueueSnackbar } = useSnackbar();
