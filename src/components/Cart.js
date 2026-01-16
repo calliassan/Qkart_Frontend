@@ -1,96 +1,151 @@
-import {
-  AddOutlined,
-  RemoveOutlined,
-  ShoppingCartOutlined,
-} from "@mui/icons-material";
-import { Box, Button, IconButton, Stack } from "@mui/material";
-import React from "react";
-import { useHistory } from "react-router-dom";
-import "./cart.css";
+import { Search } from "@mui/icons-material";
+import { Grid, InputAdornment, TextField } from "@mui/material";
+import axios from "axios";
+import { useSnackbar } from "notistack";
+import React, { useCallback, useEffect, useState } from "react";
+import { config } from "../App";
+import Footer from "./Footer";
+import Header from "./Header";
+import ProductCard from "./ProductCard";
+import Cart, { generateCartItemsFrom } from "./Cart";
+import "./ProductCard.css";
 
-export const generateCartItemsFrom = (cartData, productsData) => {
-  if (!cartData || !productsData) return [];
-  return cartData
-    .map((item) => {
-      const product = productsData.find((p) => p._id === item.productId);
-      if (!product) return null;
-      return {
-        productId: item.productId,
-        qty: item.qty,
-        name: product.name,
-        cost: product.cost,
-        image: product.image,
-      };
-    })
-    .filter(Boolean);
-};
+const Products = () => {
+  const [products, setProducts] = useState([]);
+  const [searchText, setSearchText] = useState("");
+  const [debounceTimer, setDebounceTimer] = useState(null);
+  const [cartItems, setCartItems] = useState([]);
+  const { enqueueSnackbar } = useSnackbar();
 
-export const getTotalCartValue = (items = []) =>
-  items.reduce((sum, item) => sum + item.cost * item.qty, 0);
+  const isLoggedIn = Boolean(localStorage.getItem("userdata"));
+  const token = localStorage.getItem("token");
 
-export const getTotalItems = (items = []) =>
-  items.reduce((sum, item) => sum + item.qty, 0);
+  const fetchProducts = useCallback(async () => {
+    try {
+      const response = await axios.get(`${config.endpoint}/api/v1/products`);
+      setProducts(response.data);
+    } catch {
+      enqueueSnackbar("Failed to fetch products", { variant: "error" });
+    }
+  }, [enqueueSnackbar]);
 
-const ItemQuantity = ({ value, onAdd, onRemove, readonly }) =>
-  readonly ? (
-    <Box>Qty: {value}</Box>
-  ) : (
-    <Stack direction="row" alignItems="center">
-      <IconButton size="small" onClick={onRemove}>
-        <RemoveOutlined />
-      </IconButton>
-      <Box px={1}>{value}</Box>
-      <IconButton size="small" onClick={onAdd}>
-        <AddOutlined />
-      </IconButton>
-    </Stack>
-  );
+  const fetchCart = useCallback(async () => {
+    if (!isLoggedIn) return;
+    try {
+      const response = await axios.get(`${config.endpoint}/api/v1/cart`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCartItems(generateCartItemsFrom(response.data, products));
+    } catch {
+      enqueueSnackbar("Error while fetching cart", { variant: "error" });
+    }
+  }, [enqueueSnackbar, isLoggedIn, products, token]);
 
-const Cart = ({ items = [], handleQuantity, readonly = false }) => {
-  const history = useHistory();
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setSearchText(value);
 
-  if (!items.length) {
-    return (
-      <Box className="cart empty">
-        <ShoppingCartOutlined />
-        <Box>Cart is empty</Box>
-      </Box>
-    );
-  }
+    if (debounceTimer) clearTimeout(debounceTimer);
+
+    const timer = setTimeout(async () => {
+      try {
+        const url =
+          value.trim() === ""
+            ? `${config.endpoint}/api/v1/products`
+            : `${config.endpoint}/api/v1/products/search?value=${value}`;
+        const response = await axios.get(url);
+        setProducts(response.data);
+      } catch {
+        enqueueSnackbar("Search failed", { variant: "error" });
+      }
+    }, 500);
+
+    setDebounceTimer(timer);
+  };
+
+  const isItemInCart = (productId) =>
+    cartItems.some((item) => item.productId === productId);
+
+  const addToCart = async (productId, qty) => {
+    if (!isLoggedIn) {
+      enqueueSnackbar("Login to add item to the cart", { variant: "warning" });
+      return;
+    }
+
+    const isAddButton = qty === undefined;
+
+    if (isAddButton && isItemInCart(productId)) {
+      enqueueSnackbar(
+        "Item already in cart. Use the cart sidebar to update quantity or remove item.",
+        { variant: "warning" }
+      );
+      return;
+    }
+
+    if (isAddButton) qty = 1;
+    if (qty < 0) return;
+
+    try {
+      const response = await axios.post(
+        `${config.endpoint}/api/v1/cart`,
+        { productId, qty },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setCartItems(generateCartItemsFrom(response.data, products));
+    } catch {
+      enqueueSnackbar("Failed to update cart", { variant: "error" });
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  useEffect(() => {
+    if (products.length) fetchCart();
+  }, [products, fetchCart]);
 
   return (
-    <Box className="cart">
-      {items.map((item) => (
-        <Box key={item.productId} display="flex" p={1}>
-          <img src={item.image} alt={item.name} width="80" />
-          <Box px={1} flexGrow={1}>
-            <div>{item.name}</div>
-            <ItemQuantity
-              value={item.qty}
-              readonly={readonly}
-              onAdd={() => handleQuantity(item.productId, item.qty + 1)}
-              onRemove={() => handleQuantity(item.productId, item.qty - 1)}
-            />
-          </Box>
-          <Box fontWeight="700">${item.cost}</Box>
-        </Box>
-      ))}
+    <>
+      <Header />
 
-      <Box p={1} fontWeight="700">
-        Order Total: ${getTotalCartValue(items)}
-      </Box>
+      <TextField
+        className="search-mobile"
+        size="small"
+        fullWidth
+        placeholder="Search for items/categories"
+        value={searchText}
+        onChange={handleSearch}
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <Search color="primary" />
+            </InputAdornment>
+          ),
+        }}
+      />
 
-      {!readonly && (
-        <Button
-          fullWidth
-          variant="contained"
-          onClick={() => history.push("/checkout")}
-        >
-          Checkout
-        </Button>
-      )}
-    </Box>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={isLoggedIn ? 9 : 12}>
+          <Grid container spacing={2}>
+            {products.map((product) => (
+              <Grid item xs={12} sm={6} md={4} key={product._id}>
+                <ProductCard product={product} handleAddToCart={addToCart} />
+              </Grid>
+            ))}
+          </Grid>
+        </Grid>
+
+        {isLoggedIn && (
+          <Grid item xs={12} md={3}>
+            <Cart items={cartItems} handleQuantity={addToCart} />
+          </Grid>
+        )}
+      </Grid>
+
+      <Footer />
+    </>
   );
 };
 
-export default Cart;
+export default Products;

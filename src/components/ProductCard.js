@@ -13,23 +13,22 @@ import "./ProductCard.css";
 const ProductCard = ({ product, handleAddToCart }) => {
   return (
     <Card className="card">
-      <CardMedia
-        component="img"
-        alt={product.name}
-        height={140}
-        image={product.image}
-      ></CardMedia>
+      <CardMedia component="img" height="140" image={product.image} />
       <CardContent>
         <Typography>{product.name}</Typography>
-        <Typography>{product.cost}</Typography>
-        <Typography>{<Rating value={product.rating} />}</Typography>
+        <Typography>${product.cost}</Typography>
+        <Rating value={product.rating} readOnly />
       </CardContent>
       <CardActions>
-        <Button onClick={() => handleAddToCart(product._id)}>
+        <Button
+          variant="contained"
+          onClick={() => handleAddToCart(product._id)}
+        >
           Add to cart
         </Button>
       </CardActions>
     </Card>
   );
 };
+
 export default ProductCard;

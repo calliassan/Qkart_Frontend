@@ -2,7 +2,7 @@ import { Search } from "@mui/icons-material";
 import { Grid, InputAdornment, TextField } from "@mui/material";
 import axios from "axios";
 import { useSnackbar } from "notistack";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { config } from "../App";
 import Footer from "./Footer";
 import Header from "./Header";
@@ -17,29 +17,29 @@ const Products = () => {
   const [cartItems, setCartItems] = useState([]);
   const { enqueueSnackbar } = useSnackbar();
 
-  const isloggedin = Boolean(localStorage.getItem("userdata"));
+  const isLoggedIn = Boolean(localStorage.getItem("userdata"));
   const token = localStorage.getItem("token");
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const response = await axios.get(`${config.endpoint}/api/v1/products`);
       setProducts(response.data);
     } catch {
       enqueueSnackbar("Failed to fetch products", { variant: "error" });
     }
-  };
+  }, [enqueueSnackbar]);
 
-  const fetchSearchedProducts = async (query) => {
+  const fetchCart = useCallback(async () => {
+    if (!isLoggedIn) return;
     try {
-      const response = await axios.get(
-        `${config.endpoint}/api/v1/products/search?value=${query}`
-      );
-      setProducts(response.data);
-    } catch (error) {
-      if (error.response?.status === 404) setProducts([]);
-      else enqueueSnackbar("Search failed", { variant: "error" });
+      const response = await axios.get(`${config.endpoint}/api/v1/cart`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCartItems(generateCartItemsFrom(response.data, products));
+    } catch {
+      enqueueSnackbar("Error while fetching cart", { variant: "error" });
     }
-  };
+  }, [enqueueSnackbar, isLoggedIn, products, token]);
 
   const handleSearch = (e) => {
     const value = e.target.value;
@@ -47,86 +47,66 @@ const Products = () => {
 
     if (debounceTimer) clearTimeout(debounceTimer);
 
-    const timer = setTimeout(() => {
-      value.trim() === "" ? fetchProducts() : fetchSearchedProducts(value);
+    const timer = setTimeout(async () => {
+      try {
+        const url =
+          value.trim() === ""
+            ? `${config.endpoint}/api/v1/products`
+            : `${config.endpoint}/api/v1/products/search?value=${value}`;
+        const response = await axios.get(url);
+        setProducts(response.data);
+      } catch {
+        enqueueSnackbar("Search failed", { variant: "error" });
+      }
     }, 500);
 
     setDebounceTimer(timer);
   };
-  const fetchCart = async () => {
-    const url = `${config.endpoint}/api/v1/cart`;
-    try {
-      const response = await axios(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const mergeddata = generateCartItemsFrom(response.data, products);
 
-      setCartItems(mergeddata);
-    } catch (error) {
-      enqueueSnackbar("Error while fetching", { variant: "error" });
-    }
-  };
+  const isItemInCart = (productId) =>
+    cartItems.some((item) => item.productId === productId);
 
-  //check if item is in cart
-  const isIteminCart = (productId) => {
-    return cartItems.some((item) => item.productId === productId);
-  };
-  const addtoCart = async (productId, qty) => {
-    if (!isloggedin) {
-      enqueueSnackbar("Login to add item to the cart", {
-        variant: "warning",
-      });
+  const addToCart = async (productId, qty) => {
+    if (!isLoggedIn) {
+      enqueueSnackbar("Login to add item to the cart", { variant: "warning" });
       return;
     }
 
-    const isAddButtonClick = qty === undefined;
+    const isAddButton = qty === undefined;
 
-    // ✅ ONLY block duplicates for ADD button
-    if (isAddButtonClick) {
-      if (isIteminCart(productId)) {
-        enqueueSnackbar(
-          "Item already in cart. Use the cart sidebar to update quantity or remove item.",
-          { variant: "warning", preventDuplicate: true }
-        );
-        return;
-      }
-      qty = 1;
+    if (isAddButton && isItemInCart(productId)) {
+      enqueueSnackbar(
+        "Item already in cart. Use the cart sidebar to update quantity or remove item.",
+        { variant: "warning" }
+      );
+      return;
     }
 
-    // ✅ allow qty = 0 (remove item), block negatives
+    if (isAddButton) qty = 1;
     if (qty < 0) return;
 
     try {
       const response = await axios.post(
         `${config.endpoint}/api/v1/cart`,
         { productId, qty },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      const mergeditems = generateCartItemsFrom(response.data, products);
-      setCartItems(mergeditems);
+      setCartItems(generateCartItemsFrom(response.data, products));
     } catch {
-      enqueueSnackbar("Failed to update cart", {
-        variant: "error",
-      });
+      enqueueSnackbar("Failed to update cart", { variant: "error" });
     }
   };
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [fetchProducts]);
+
   useEffect(() => {
-    if (products.length && isloggedin) {
-      fetchCart();
-    }
-  }, [products]);
+    if (products.length) fetchCart();
+  }, [products, fetchCart]);
 
   return (
-    <div>
+    <>
       <Header />
 
       <TextField
@@ -145,33 +125,26 @@ const Products = () => {
         }}
       />
 
-      {/* MAIN LAYOUT */}
       <Grid container spacing={2}>
-        {/* PRODUCTS */}
-        <Grid item xs={12} md={isloggedin ? 9 : 12}>
+        <Grid item xs={12} md={isLoggedIn ? 9 : 12}>
           <Grid container spacing={2}>
             {products.map((product) => (
               <Grid item xs={12} sm={6} md={4} key={product._id}>
-                <ProductCard product={product} handleAddToCart={addtoCart} />
+                <ProductCard product={product} handleAddToCart={addToCart} />
               </Grid>
             ))}
           </Grid>
         </Grid>
 
-        {/* CART */}
-        {isloggedin && (
+        {isLoggedIn && (
           <Grid item xs={12} md={3}>
-            <Cart
-              products={products}
-              items={cartItems}
-              handleQuantity={addtoCart}
-            />
+            <Cart items={cartItems} handleQuantity={addToCart} />
           </Grid>
         )}
       </Grid>
 
       <Footer />
-    </div>
+    </>
   );
 };
 
